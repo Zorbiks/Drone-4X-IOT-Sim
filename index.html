@@ -1,0 +1,879 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Drone-X4</title>
+    <meta name="description" content="Drone-X4 — Simulation industrielle d'assemblage et contrôle qualité" />
+    <meta property="og:title" content="Drone-X4" />
+    <meta property="og:description" content="Drone-X4 — Simulation industrielle d'assemblage et contrôle qualité" />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <!-- Top Bar Contract (3 zones) -->
+    <header class="scada-header">
+      <div class="brand-title">
+        <span class="brand-dot"></span>
+        <span style="font-weight: 800; font-size: 1.15rem; letter-spacing: 0.05em; color: #fff;">Drone-X4</span>
+      </div>
+
+      <div class="header-actions">
+        <button id="btn-open-mqtt" class="mqtt-badge-indicator disconnected" title="Configurer la liaison MQTT">
+          <span id="mqtt-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #f43f5e; margin-right: 4px;"></span>
+          <span id="mqtt-status-label">Déconnecté</span>
+        </button>
+        <button id="btn-guide-nodered" class="btn btn-secondary" title="Guide Node-RED">
+          <span>Guide Node-RED</span>
+        </button>
+        <button id="btn-sound-toggle" class="btn btn-secondary" title="Effets sonores">
+          <span id="sound-icon">🔊 Son ACTIF</span>
+        </button>
+      </div>
+    </header>
+
+    <main class="app-container">
+      <!-- Challenge Banner (Mode Défi - Prompt 5) -->
+      <section class="challenge-banner" id="challenge-banner">
+        <div class="challenge-info">
+          <div>
+            <div class="challenge-title" id="challenge-mode-label">Mode Défi Officiel</div>
+            <div class="challenge-target">Objectif : Produire <strong id="challenge-target-count">100</strong> drones conformes en moins de <span id="challenge-target-time">10:00</span></div>
+          </div>
+          <div class="challenge-timer-display" id="challenge-timer-val">10:00.0</div>
+        </div>
+
+        <div class="challenge-progress-wrap">
+          <div class="challenge-progress-bar">
+            <div class="challenge-progress-fill" id="challenge-progress-fill"></div>
+          </div>
+          <div class="challenge-progress-text">
+            <span>Progression : <strong id="challenge-progress-num" style="color: var(--accent-emerald);">0</strong> / <span id="challenge-target-max">100</span></span>
+            <span id="challenge-percent">0%</span>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 0.4rem; align-items: center;">
+          <select id="challenge-select" class="btn btn-secondary" style="background: #111827; border-color: #374151; font-size: 0.75rem;">
+            <option value="100">Défi 100 Drones (10 min)</option>
+            <option value="50">Défi 50 Drones (5 min)</option>
+            <option value="20">Défi 20 Drones (2 min)</option>
+            <option value="free">Mode Libre (Sans chrono)</option>
+          </select>
+          <button id="btn-start-challenge" class="btn btn-accent">Recommencer Défi</button>
+        </div>
+      </section>
+
+      <!-- Alerte Qualité Critique (Prompt 6 : >30% défaut) -->
+      <div class="quality-alert-bar" id="quality-alert-bar">
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+          <span style="font-size: 1.25rem;">🚨</span>
+          <div>
+            <div>ALERTE QUALITÉ CRITIQUE : TAUX DE DÉFAUT SUPÉRIEUR À 30%</div>
+            <div style="font-size: 0.75rem; font-weight: 400; opacity: 0.9;">Taux actuel : <span id="alert-defect-rate" style="font-weight: 700;">33.3%</span> — Ajustez la précision du banc de test ou contrôlez l'outillage.</div>
+          </div>
+        </div>
+        <button id="btn-dismiss-alert" class="btn btn-danger" style="padding: 0.3rem 0.6rem; font-size: 0.75rem;">Acquitter Alarme</button>
+      </div>
+
+      <!-- Simulation Viewport (100% SVG Only - Prompts 1, 2, 3, 4, 5, 6) -->
+      <div class="sim-viewport-card">
+        <div class="sim-toolbar">
+          <div class="sim-status-group">
+            <span class="status-indicator">
+              <span class="status-dot" id="sim-status-dot"></span>
+              <span id="sim-status-text" style="font-weight: 600; text-transform: uppercase;">En production</span>
+            </span>
+            <span style="color: var(--text-dim);">|</span>
+            <span>Flux : <strong style="color: #fff;" id="bar-flow-rate">0 kit/min</strong></span>
+            <span style="color: var(--text-dim);">|</span>
+            <span id="bottleneck-indicator-bar" style="color: var(--accent-amber); font-weight: 600; display: none;">⚠️ Goulot actif</span>
+          </div>
+
+          <div class="sim-controls-group">
+            <button id="btn-start" class="btn btn-primary">
+              <span>▶ Démarrer</span>
+            </button>
+            <button id="btn-stop" class="btn btn-danger">
+              <span>⏹ Arrêter</span>
+            </button>
+            <button id="btn-pause" class="btn btn-secondary">
+              <span>⏸ Pause</span>
+            </button>
+            <button id="btn-manual-inject" class="btn btn-accent" title="Injecter un kit immédiatement">
+              <span>+ Injecter Kit</span>
+            </button>
+            <button id="btn-reset" class="btn btn-secondary">
+              <span>↺ Réinitialiser</span>
+            </button>
+
+            <div style="display: flex; background: rgba(0,0,0,0.4); border-radius: 5px; border: 1px solid var(--bg-surface-border); padding: 2px;">
+              <button class="btn btn-secondary speed-btn active" data-speed="1" style="padding: 0.3rem 0.6rem; font-size: 0.75rem;">1x</button>
+              <button class="btn btn-secondary speed-btn" data-speed="2" style="padding: 0.3rem 0.6rem; font-size: 0.75rem;">2x</button>
+              <button class="btn btn-secondary speed-btn" data-speed="5" style="padding: 0.3rem 0.6rem; font-size: 0.75rem;">5x</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- SVG Canvas : Complete 100% Vector Rendering -->
+        <div class="svg-stage-container">
+          <!-- Drone Inspector Tooltip -->
+          <div id="drone-inspector-tooltip" class="drone-inspector-box">
+            <div style="font-weight: 700; color: #fff; margin-bottom: 0.25rem;" id="insp-serial">DRONE #104</div>
+            <div style="color: var(--text-muted); font-size: 0.7rem;" id="insp-type">Statut: Kit brut</div>
+            <div style="color: var(--text-muted); font-size: 0.7rem;" id="insp-time">Temps sur ligne: 4.2s</div>
+            <div style="color: var(--accent-cyan); font-size: 0.7rem;" id="insp-qc">QC: En attente</div>
+          </div>
+
+          <svg id="factory-svg" class="svg-stage" viewBox="0 0 1600 680" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <!-- Gradients Industriels -->
+              <linearGradient id="metal-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#334155" />
+                <stop offset="50%" stop-color="#475569" />
+                <stop offset="100%" stop-color="#1e293b" />
+              </linearGradient>
+
+              <linearGradient id="conveyor-belt-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#1e293b" />
+                <stop offset="15%" stop-color="#334155" />
+                <stop offset="85%" stop-color="#1e293b" />
+                <stop offset="100%" stop-color="#0f172a" />
+              </linearGradient>
+
+              <linearGradient id="machine-grad-assembly" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#1e293b" />
+                <stop offset="50%" stop-color="#0f172a" />
+                <stop offset="100%" stop-color="#020617" />
+              </linearGradient>
+
+              <linearGradient id="machine-grad-qc" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#1e293b" />
+                <stop offset="50%" stop-color="#091e2b" />
+                <stop offset="100%" stop-color="#020617" />
+              </linearGradient>
+
+              <linearGradient id="laser-beam-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#06b6d4" stop-opacity="0.8" />
+                <stop offset="50%" stop-color="#38bdf8" stop-opacity="0.3" />
+                <stop offset="100%" stop-color="#06b6d4" stop-opacity="0.9" />
+              </linearGradient>
+
+              <linearGradient id="stock-green-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="rgba(16, 185, 129, 0.15)" />
+                <stop offset="100%" stop-color="rgba(5, 150, 105, 0.05)" />
+              </linearGradient>
+
+              <linearGradient id="reject-red-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="rgba(244, 63, 94, 0.15)" />
+                <stop offset="100%" stop-color="rgba(225, 29, 72, 0.05)" />
+              </linearGradient>
+
+              <!-- Pattern Rayures de Sécurité Industrielle Jaune/Noir -->
+              <pattern id="hazard-stripes" width="20" height="20" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                <rect width="10" height="20" fill="#eab308" />
+                <rect x="10" width="10" height="20" fill="#1e293b" />
+              </pattern>
+
+              <!-- Pattern Sol Usine (Dalles Métalliques) -->
+              <pattern id="factory-floor-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                <rect width="40" height="40" fill="#080e1a" />
+                <line x1="0" y1="40" x2="40" y2="40" stroke="#121b2d" stroke-width="1" />
+                <line x1="40" y1="0" x2="40" y2="40" stroke="#121b2d" stroke-width="1" />
+                <circle cx="20" cy="20" r="1" fill="#1e293b" />
+              </pattern>
+
+              <!-- Effets de Lueur Glow -->
+              <filter id="glow-cyan" x="-20%" y="-20%" width="140%" height="140%">
+                <feGaussianBlur stdDeviation="3" result="blur" />
+                <feComposite in="SourceGraphic" in2="blur" operator="over" />
+              </filter>
+              <filter id="glow-green" x="-20%" y="-20%" width="140%" height="140%">
+                <feGaussianBlur stdDeviation="4" result="blur" />
+                <feComposite in="SourceGraphic" in2="blur" operator="over" />
+              </filter>
+              <filter id="glow-red" x="-20%" y="-20%" width="140%" height="140%">
+                <feGaussianBlur stdDeviation="4" result="blur" />
+                <feComposite in="SourceGraphic" in2="blur" operator="over" />
+              </filter>
+              <filter id="glow-amber" x="-20%" y="-20%" width="140%" height="140%">
+                <feGaussianBlur stdDeviation="5" result="blur" />
+                <feComposite in="SourceGraphic" in2="blur" operator="over" />
+              </filter>
+            </defs>
+
+            <!-- 1. SOL & GRILLE DE L'USINE -->
+            <rect width="1600" height="680" fill="url(#factory-floor-grid)" />
+
+            <!-- Lignes de guidage et marquages au sol -->
+            <rect x="20" y="200" width="1560" height="2" fill="#1e293b" />
+            <rect x="20" y="380" width="1560" height="2" fill="#1e293b" />
+
+            <!-- Rayures de sécurité autour des zones de travail -->
+            <rect x="470" y="125" width="280" height="6" fill="url(#hazard-stripes)" opacity="0.8" />
+            <rect x="470" y="420" width="280" height="6" fill="url(#hazard-stripes)" opacity="0.8" />
+            <rect x="960" y="125" width="280" height="6" fill="url(#hazard-stripes)" opacity="0.8" />
+            <rect x="960" y="420" width="280" height="6" fill="url(#hazard-stripes)" opacity="0.8" />
+
+            <!-- 2. CONVOYEURS SVG (LIGNE PRINCIPALE) -->
+            <!-- Support & Structure des convoyeurs -->
+            <g id="conveyors-group">
+              <!-- Convoyeur 1 (Source vers Assemblage) -->
+              <g id="conveyor-1-body">
+                <!-- Pieds mécaniques du convoyeur -->
+                <line x1="200" y1="300" x2="200" y2="360" stroke="#334155" stroke-width="6" />
+                <line x1="330" y1="300" x2="330" y2="360" stroke="#334155" stroke-width="6" />
+                <line x1="450" y1="300" x2="450" y2="360" stroke="#334155" stroke-width="6" />
+                <!-- Bande transporteuse -->
+                <rect x="160" y="250" width="330" height="52" rx="4" fill="url(#conveyor-belt-grad)" stroke="#475569" stroke-width="1.5" />
+                <!-- Glissières de guidage supérieure & inférieure -->
+                <line x1="160" y1="250" x2="490" y2="250" stroke="#64748b" stroke-width="3" />
+                <line x1="160" y1="302" x2="490" y2="302" stroke="#64748b" stroke-width="3" />
+                <!-- Rouleaux rotatifs dynamiques (générés/animés en JS) -->
+                <g id="rollers-conv-1"></g>
+              </g>
+
+              <!-- Convoyeur 2 (Assemblage vers Contrôle Qualité) -->
+              <g id="conveyor-2-body">
+                <line x1="770" y1="300" x2="770" y2="360" stroke="#334155" stroke-width="6" />
+                <line x1="880" y1="300" x2="880" y2="360" stroke="#334155" stroke-width="6" />
+                <rect x="730" y="250" width="240" height="52" rx="4" fill="url(#conveyor-belt-grad)" stroke="#475569" stroke-width="1.5" />
+                <line x1="730" y1="250" x2="970" y2="250" stroke="#64748b" stroke-width="3" />
+                <line x1="730" y1="302" x2="970" y2="302" stroke="#64748b" stroke-width="3" />
+                <g id="rollers-conv-2"></g>
+              </g>
+
+              <!-- Zone d'Aiguillage & Convoyeurs de Sortie (Bifurcation Tri) -->
+              <g id="conveyor-sort-body">
+                <!-- Convoyeur haut (vers Stock Final Conforme) -->
+                <path d="M 1210 276 L 1280 276 L 1340 200 L 1370 200" fill="none" stroke="#1e293b" stroke-width="50" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M 1210 276 L 1280 276 L 1340 200 L 1370 200" fill="none" stroke="#334155" stroke-width="46" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M 1210 251 L 1280 251 L 1340 175 L 1370 175" fill="none" stroke="#10b981" stroke-width="3" opacity="0.6" />
+                
+                <!-- Convoyeur bas (vers Bac de Rejet Défectueux) -->
+                <path d="M 1210 276 L 1280 276 L 1340 390 L 1370 390" fill="none" stroke="#1e293b" stroke-width="50" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M 1210 276 L 1280 276 L 1340 390 L 1370 390" fill="none" stroke="#334155" stroke-width="46" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M 1210 301 L 1280 301 L 1340 415 L 1370 415" fill="none" stroke="#f43f5e" stroke-width="3" opacity="0.6" />
+
+                <!-- Aiguilleur mécanique motorisé (Flap Diverter SVG) -->
+                <line id="diverter-arm" x1="1245" y1="276" x2="1285" y2="260" stroke="#f59e0b" stroke-width="5" stroke-linecap="round" />
+                <circle cx="1245" cy="276" r="6" fill="#f59e0b" stroke="#000" stroke-width="2" />
+              </g>
+            </g>
+
+            <!-- 3. POSTE SOURCE (MAGASIN DE KITS DRONES) -->
+            <g id="station-source">
+              <!-- Bâti du chargeur automatique -->
+              <rect x="25" y="160" width="135" height="210" rx="8" fill="#0f172a" stroke="#334155" stroke-width="2" />
+              <rect x="35" y="170" width="115" height="25" rx="4" fill="#1e293b" />
+              <text x="92" y="187" text-anchor="middle" fill="#38bdf8" font-size="10" font-weight="700" letter-spacing="1">SOURCE KITS</text>
+              
+              <!-- Hublot transparent du magasin vertical de kits -->
+              <rect x="40" y="205" width="105" height="120" rx="4" fill="rgba(6, 182, 212, 0.05)" stroke="#0284c7" stroke-width="1.5" />
+              
+              <!-- Dessin des kits en réserve dans le chargeur -->
+              <g id="source-kits-preview">
+                <!-- Kit supérieur en attente -->
+                <rect x="52" y="215" width="80" height="26" rx="3" fill="#1e293b" stroke="#475569" stroke-width="1" />
+                <rect x="76" y="221" width="32" height="14" fill="#0f172a" />
+                <circle cx="62" cy="228" r="4" fill="#0284c7" />
+                <circle cx="122" cy="228" r="4" fill="#0284c7" />
+                <text x="92" y="232" text-anchor="middle" fill="#94a3b8" font-size="8" font-family="monospace">KIT #3</text>
+
+                <!-- Kit intermédiaire -->
+                <rect x="52" y="250" width="80" height="26" rx="3" fill="#1e293b" stroke="#475569" stroke-width="1" />
+                <rect x="76" y="256" width="32" height="14" fill="#0f172a" />
+                <circle cx="62" cy="263" r="4" fill="#0284c7" />
+                <circle cx="122" cy="263" r="4" fill="#0284c7" />
+                <text x="92" y="267" text-anchor="middle" fill="#94a3b8" font-size="8" font-family="monospace">KIT #2</text>
+
+                <!-- Kit prêt pour injection -->
+                <rect x="52" y="285" width="80" height="26" rx="3" fill="#334155" stroke="#38bdf8" stroke-width="1" />
+                <rect x="76" y="291" width="32" height="14" fill="#1e293b" />
+                <circle cx="62" cy="298" r="4" fill="#38bdf8" />
+                <circle cx="122" cy="298" r="4" fill="#38bdf8" />
+                <text x="92" y="302" text-anchor="middle" fill="#38bdf8" font-size="8" font-family="monospace">KIT #1</text>
+              </g>
+
+              <!-- Piston pousseur pneumatique -->
+              <rect id="source-piston" x="15" y="293" width="30" height="12" fill="#64748b" rx="2" />
+
+              <!-- Voyant d'état d'injection -->
+              <circle id="source-led" cx="135" cy="182" r="5" fill="#10b981" filter="url(#glow-green)" />
+              <text x="92" y="352" text-anchor="middle" fill="#94a3b8" font-size="9">Cycle: <tspan id="source-cycle-display" fill="#38bdf8" font-weight="700">5.0s</tspan></text>
+            </g>
+
+            <!-- 4. CAPTEUR S1 : DÉTECTION OPTIQUE AVANT ASSEMBLAGE (Prompt 6) -->
+            <g id="sensor-s1-group">
+              <!-- Émetteur haut -->
+              <rect x="428" y="222" width="16" height="20" rx="3" fill="#1e293b" stroke="#06b6d4" stroke-width="1.5" />
+              <circle id="s1-led-top" cx="436" cy="232" r="4" fill="#06b6d4" />
+              <!-- Récepteur bas -->
+              <rect x="428" y="308" width="16" height="20" rx="3" fill="#1e293b" stroke="#06b6d4" stroke-width="1.5" />
+              <circle id="s1-led-bot" cx="436" cy="318" r="4" fill="#06b6d4" />
+              <!-- Faisceau laser optique vertical -->
+              <line id="s1-beam" x1="436" y1="242" x2="436" y2="308" stroke="#06b6d4" stroke-width="2" stroke-dasharray="3 3" opacity="0.8" />
+              <!-- Étiquette SVG -->
+              <rect x="415" y="202" width="42" height="15" rx="3" fill="#0f172a" stroke="#334155" stroke-width="1" />
+              <text x="436" y="213" text-anchor="middle" fill="#67e8f9" font-size="8" font-weight="700" font-family="monospace">S1:PRÉS</text>
+            </g>
+
+            <!-- 5. MACHINE 1 : POSTE D'ASSEMBLAGE ROBOTISÉ (Prompts 2, 4, 6) -->
+            <g id="station-assembly">
+              <!-- Contour d'alerte de goulot d'étranglement -->
+              <rect id="assembly-bottleneck-halo" x="480" y="130" width="250" height="270" rx="10" fill="none" stroke="#f59e0b" stroke-width="4" stroke-dasharray="8 6" opacity="0" filter="url(#glow-amber)" />
+
+              <!-- Corps principal de la machine -->
+              <rect id="assembly-frame" x="485" y="135" width="240" height="260" rx="8" fill="url(#machine-grad-assembly)" stroke="#3b82f6" stroke-width="2" />
+              
+              <!-- En-tête machine -->
+              <rect x="495" y="145" width="220" height="32" rx="4" fill="#1e293b" />
+              <text x="508" y="166" fill="#fff" font-size="11" font-weight="700" letter-spacing="0.5">POSTE 01 — ASSEMBLAGE ROBOT</text>
+              <!-- Gyrophare supérieur d'état -->
+              <circle id="assembly-beacon" cx="700" cy="161" r="7" fill="#10b981" filter="url(#glow-green)" />
+
+              <!-- Fenêtre d'inspection / Chambre d'assemblage vitrée -->
+              <rect x="495" y="185" width="220" height="145" rx="6" fill="#090f1d" stroke="#334155" stroke-width="1.5" />
+              <line x1="495" y1="210" x2="715" y2="190" stroke="#1e293b" stroke-width="1" stroke-dasharray="10 10" opacity="0.3" />
+
+              <!-- Bras Robotisé SVG Articulé (Animé en JS) -->
+              <g id="robot-arm-assembly">
+                <!-- Base fixe du robot au plafond de la cabine -->
+                <rect x="585" y="185" width="40" height="12" fill="#475569" rx="2" />
+                <circle cx="605" cy="197" r="6" fill="#64748b" />
+                <!-- Segment d'épaule -->
+                <line id="robot-segment-1" x1="605" y1="197" x2="605" y2="235" stroke="#94a3b8" stroke-width="8" stroke-linecap="round" />
+                <circle id="robot-joint-elbow" cx="605" cy="235" r="7" fill="#3b82f6" />
+                <!-- Avant-bras & Outil de vissage -->
+                <line id="robot-segment-2" x1="605" y1="235" x2="605" y2="265" stroke="#cbd5e1" stroke-width="5" stroke-linecap="round" />
+                <!-- Tête d'assemblage / Pince robotique -->
+                <g id="robot-tool-head" transform="translate(605, 265)">
+                  <polygon points="-12,-3 12,-3 8,10 -8,10" fill="#f59e0b" />
+                  <line x1="-8" y1="10" x2="-8" y2="18" stroke="#f59e0b" stroke-width="3" />
+                  <line x1="8" y1="10" x2="8" y2="18" stroke="#f59e0b" stroke-width="3" />
+                  <circle cx="0" cy="5" r="3" fill="#ef4444" />
+                </g>
+                <!-- Effet étincelles / Laser de soudage (visible pendant l'assemblage) -->
+                <g id="welding-sparks" opacity="0">
+                  <circle cx="605" cy="285" r="6" fill="#38bdf8" filter="url(#glow-cyan)" />
+                  <line x1="605" y1="285" x2="595" y2="275" stroke="#fef08a" stroke-width="2" />
+                  <line x1="605" y1="285" x2="618" y2="273" stroke="#fef08a" stroke-width="2" />
+                  <line x1="605" y1="285" x2="602" y2="298" stroke="#fef08a" stroke-width="2" />
+                  <line x1="605" y1="285" x2="615" y2="295" stroke="#fef08a" stroke-width="2" />
+                </g>
+              </g>
+
+              <!-- Bandeau de statut dynamique SVG (Prompt 2) -->
+              <rect x="495" y="338" width="220" height="24" rx="4" fill="#0f172a" stroke="#1e293b" stroke-width="1" />
+              <text id="assembly-status-text" x="605" y="354" text-anchor="middle" fill="#94a3b8" font-size="10" font-weight="600" font-family="monospace">EN ATTENTE</text>
+
+              <!-- Barre de progression de cycle (Prompt 2) -->
+              <rect x="495" y="366" width="220" height="8" rx="4" fill="#1e293b" />
+              <rect id="assembly-progress-bar" x="495" y="366" width="0" height="8" rx="4" fill="#3b82f6" />
+
+              <!-- Afficheurs Compteurs en SVG (Prompt 2: En attente & Assemblés) -->
+              <g transform="translate(495, 380)">
+                <text x="5" y="10" fill="#94a3b8" font-size="9">FILE D'ATTENTE: <tspan id="assembly-queue-count" fill="#f59e0b" font-weight="700">0</tspan></text>
+                <text x="135" y="10" fill="#94a3b8" font-size="9">ASSEMBLÉS: <tspan id="assembly-done-count" fill="#10b981" font-weight="700">0</tspan></text>
+              </g>
+
+              <!-- Badge Goulot d'Étranglement SVG (Prompt 4) -->
+              <g id="assembly-bottleneck-badge" opacity="0">
+                <rect x="525" y="112" width="160" height="20" rx="4" fill="#b45309" stroke="#fde047" stroke-width="1" />
+                <text x="605" y="126" text-anchor="middle" fill="#fef08a" font-size="9" font-weight="700">⚠️ GOULOT D'ÉTRANGLEMENT</text>
+              </g>
+            </g>
+
+            <!-- 6. MACHINE 2 : POSTE DE CONTRÔLE QUALITÉ OPTIQUE (Prompts 3, 4, 6) -->
+            <g id="station-qc">
+              <!-- Contour d'alerte de goulot QC -->
+              <rect id="qc-bottleneck-halo" x="970" y="130" width="250" height="270" rx="10" fill="none" stroke="#f59e0b" stroke-width="4" stroke-dasharray="8 6" opacity="0" filter="url(#glow-amber)" />
+
+              <!-- Corps principal de la machine QC -->
+              <rect id="qc-frame" x="975" y="135" width="240" height="260" rx="8" fill="url(#machine-grad-qc)" stroke="#06b6d4" stroke-width="2" />
+              
+              <!-- En-tête machine QC -->
+              <rect x="985" y="145" width="220" height="32" rx="4" fill="#1e293b" />
+              <text x="998" y="166" fill="#fff" font-size="11" font-weight="700" letter-spacing="0.5">POSTE 02 — CONTRÔLE QUALITÉ</text>
+              
+              <!-- Deux voyants de conformité & rejet (Prompt 3) -->
+              <!-- Voyant vert = conforme -->
+              <circle id="qc-led-pass" cx="1175" cy="161" r="7" fill="#064e3b" stroke="#10b981" stroke-width="1.5" />
+              <!-- Voyant rouge = rejet -->
+              <circle id="qc-led-fail" cx="1195" cy="161" r="7" fill="#4c0519" stroke="#f43f5e" stroke-width="1.5" />
+
+              <!-- Fenêtre d'inspection / Chambre de numérisation 3D -->
+              <rect x="985" y="185" width="220" height="145" rx="6" fill="#03111b" stroke="#083344" stroke-width="1.5" />
+
+              <!-- Émetteur laser & Scanner Optique (Animé en JS) -->
+              <g id="scanner-optics">
+                <!-- Portique de numérisation supérieur -->
+                <rect x="1055" y="185" width="80" height="14" fill="#334155" rx="3" />
+                <circle cx="1095" cy="199" r="5" fill="#06b6d4" />
+                
+                <!-- Rideau de balayage laser vertical SVG (Animé) -->
+                <polygon id="qc-laser-curtain" points="1075,199 1115,199 1130,295 1060,295" fill="url(#laser-beam-grad)" opacity="0" />
+                <line id="qc-laser-line" x1="1060" y1="285" x2="1130" y2="285" stroke="#38bdf8" stroke-width="3" opacity="0" filter="url(#glow-cyan)" />
+
+                <!-- Grille de coordonnées holographique SVG -->
+                <g id="qc-holo-grid" opacity="0">
+                  <line x1="1065" y1="240" x2="1125" y2="240" stroke="#06b6d4" stroke-width="1" stroke-dasharray="2 2" />
+                  <line x1="1065" y1="260" x2="1125" y2="260" stroke="#06b6d4" stroke-width="1" stroke-dasharray="2 2" />
+                  <circle cx="1095" cy="275" r="18" fill="none" stroke="#06b6d4" stroke-width="1" stroke-dasharray="3 3" />
+                </g>
+              </g>
+
+              <!-- Bandeau de statut dynamique SVG -->
+              <rect x="985" y="338" width="220" height="24" rx="4" fill="#082f49" stroke="#0369a1" stroke-width="1" />
+              <text id="qc-status-text" x="1095" y="354" text-anchor="middle" fill="#7dd3fc" font-size="10" font-weight="600" font-family="monospace">EN VEILLE</text>
+
+              <!-- Barre de progression de scan -->
+              <rect x="985" y="366" width="220" height="8" rx="4" fill="#1e293b" />
+              <rect id="qc-progress-bar" x="985" y="366" width="0" height="8" rx="4" fill="#06b6d4" />
+
+              <!-- Afficheurs Statistiques en temps réel en SVG (Prompt 3) -->
+              <g transform="translate(985, 380)">
+                <text x="5" y="10" fill="#94a3b8" font-size="9">CONF: <tspan id="qc-pass-count-svg" fill="#10b981" font-weight="700">0</tspan></text>
+                <text x="75" y="10" fill="#94a3b8" font-size="9">REJETS: <tspan id="qc-fail-count-svg" fill="#f43f5e" font-weight="700">0</tspan></text>
+                <text x="145" y="10" fill="#94a3b8" font-size="9">DÉFAUT: <tspan id="qc-rate-svg" fill="#38bdf8" font-weight="700">0.0%</tspan></text>
+              </g>
+
+              <!-- Badge Goulot d'Étranglement QC (Prompt 4) -->
+              <g id="qc-bottleneck-badge" opacity="0">
+                <rect x="1015" y="112" width="160" height="20" rx="4" fill="#b45309" stroke="#fde047" stroke-width="1" />
+                <text x="1095" y="126" text-anchor="middle" fill="#fef08a" font-size="9" font-weight="700">⚠️ GOULOT D'ÉTRANGLEMENT</text>
+              </g>
+            </g>
+
+            <!-- 7. CAPTEUR S2 : CELLULE DE COMPTAGE & TRI (Prompt 6) -->
+            <g id="sensor-s2-group">
+              <rect x="1235" y="248" width="14" height="18" rx="3" fill="#1e293b" stroke="#eab308" stroke-width="1.5" />
+              <circle id="s2-led" cx="1242" cy="257" r="3.5" fill="#ca8a04" />
+              <line id="s2-beam" x1="1242" y1="266" x2="1242" y2="304" stroke="#eab308" stroke-width="2" stroke-dasharray="2 2" opacity="0.6" />
+              <!-- Étiquette S2 -->
+              <text x="1242" y="242" text-anchor="middle" fill="#facc15" font-size="8" font-weight="700" font-family="monospace">S2:COMPTE</text>
+            </g>
+
+            <!-- 8. ZONE STOCK FINAL (CONFORME - HAUT DROITE) (Prompt 3) -->
+            <g id="station-stock-pass">
+              <!-- Fond zone verte de stockage -->
+              <rect x="1370" y="80" width="205" height="185" rx="8" fill="url(#stock-green-grad)" stroke="#10b981" stroke-width="2" />
+              <rect x="1380" y="90" width="185" height="30" rx="4" fill="rgba(16, 185, 129, 0.2)" stroke="#10b981" stroke-width="1" />
+              <text x="1472" y="110" text-anchor="middle" fill="#34d399" font-size="11" font-weight="700">STOCK FINAL (CONFORME)</text>
+
+              <!-- Étagères & Baies de stockage des drones conformes -->
+              <line x1="1385" y1="165" x2="1565" y2="165" stroke="#059669" stroke-width="3" />
+              <line x1="1385" y1="215" x2="1565" y2="215" stroke="#059669" stroke-width="3" />
+
+              <!-- Affichage géant du total conforme -->
+              <g transform="translate(1385, 225)">
+                <text x="0" y="25" fill="#a7f3d0" font-size="11" font-weight="600">UNITÉS CONFORMES:</text>
+                <text id="stock-pass-count-big" x="180" y="27" text-anchor="end" fill="#10b981" font-size="24" font-weight="800" font-family="monospace">0</text>
+              </g>
+
+              <!-- Drones conformes empilés en miniature dans le stock -->
+              <g id="stock-pass-items-display"></g>
+            </g>
+
+            <!-- 9. ZONE BAC DE REJET (NON CONFORME - BAS DROITE) (Prompt 3) -->
+            <g id="station-stock-fail">
+              <!-- Fond zone rouge de rejet -->
+              <rect x="1370" y="325" width="205" height="185" rx="8" fill="url(#reject-red-grad)" stroke="#f43f5e" stroke-width="2" />
+              <rect x="1380" y="335" width="185" height="30" rx="4" fill="rgba(244, 63, 94, 0.2)" stroke="#f43f5e" stroke-width="1" />
+              <text x="1472" y="355" text-anchor="middle" fill="#fb7185" font-size="11" font-weight="700">BAC DE REJET (DÉFAUTS)</text>
+
+              <!-- Benne de recyclage industrielle -->
+              <rect x="1385" y="375" width="175" height="80" rx="6" fill="#1e1b24" stroke="#e11d48" stroke-width="1.5" />
+              <line x1="1395" y1="415" x2="1550" y2="415" stroke="#4c0519" stroke-width="2" stroke-dasharray="6 4" />
+
+              <!-- Affichage géant du total rejets -->
+              <g transform="translate(1385, 470)">
+                <text x="0" y="25" fill="#fecdd3" font-size="11" font-weight="600">TOTAL REJETS:</text>
+                <text id="stock-fail-count-big" x="180" y="27" text-anchor="end" fill="#f43f5e" font-size="24" font-weight="800" font-family="monospace">0</text>
+              </g>
+
+              <!-- Drones défectueux collectés dans le bac -->
+              <g id="stock-fail-items-display"></g>
+            </g>
+
+            <!-- 10. CALQUE DYNAMIQUE DES PRODUITS / DRONES (Renderisé par JS) -->
+            <g id="drones-layer"></g>
+
+            <!-- 11. CALQUE DES PARTICULES & EFFETS VISUELS -->
+            <g id="fx-layer"></g>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Control Decks Grid : Sliders temps réel & Dashboard KPI (Prompt 4) -->
+      <div class="dashboard-grid">
+        <!-- Panneau de Réglage des Paramètres en Temps Réel -->
+        <section class="panel-card">
+          <div class="panel-header">
+            <div>
+              <h2 class="panel-title">Paramètres Dynamiques de la Ligne</h2>
+              <span class="panel-subtitle">Modification en direct du flux, de la vitesse et des cycles machine</span>
+            </div>
+            <button id="btn-reset-params" class="btn btn-secondary" style="font-size: 0.72rem; padding: 0.3rem 0.6rem;">Valeurs par défaut</button>
+          </div>
+
+          <div class="sliders-grid">
+            <!-- 1. Vitesse du convoyeur (Prompt 1 & 4) -->
+            <div class="param-control">
+              <div class="param-header">
+                <span>Vitesse Convoyeur</span>
+                <span class="param-value" id="val-speed">80 px/s</span>
+              </div>
+              <input type="range" id="slider-speed" class="param-slider" min="30" max="220" step="5" value="80" />
+              <div class="param-bounds">
+                <span>30 (Lent)</span>
+                <span>220 (Rapide)</span>
+              </div>
+            </div>
+
+            <!-- 2. Cadence Source (Génération produit - Prompt 1 & 4) -->
+            <div class="param-control">
+              <div class="param-header">
+                <span>Intervalle Génération Kit</span>
+                <span class="param-value" id="val-spawn">5.0 s</span>
+              </div>
+              <input type="range" id="slider-spawn" class="param-slider" min="1.0" max="10.0" step="0.5" value="5.0" />
+              <div class="param-bounds">
+                <span>1.0 s</span>
+                <span>5.0 s (Réf)</span>
+                <span>10.0 s</span>
+              </div>
+            </div>
+
+            <!-- 3. Temps d'Assemblage (Prompt 2 & 4) -->
+            <div class="param-control">
+              <div class="param-header">
+                <span>Temps Assemblage</span>
+                <span class="param-value" id="val-assembly">3.0 s</span>
+              </div>
+              <input type="range" id="slider-assembly" class="param-slider" min="1.0" max="8.0" step="0.5" value="3.0" />
+              <div class="param-bounds">
+                <span>1.0 s</span>
+                <span>3.0 s (Réf)</span>
+                <span>8.0 s</span>
+              </div>
+            </div>
+
+            <!-- 4. Temps de Contrôle Qualité (Prompt 3 & 4) -->
+            <div class="param-control">
+              <div class="param-header">
+                <span>Temps Contrôle QC</span>
+                <span class="param-value" id="val-qc">2.0 s</span>
+              </div>
+              <input type="range" id="slider-qc" class="param-slider" min="0.5" max="6.0" step="0.5" value="2.0" />
+              <div class="param-bounds">
+                <span>0.5 s</span>
+                <span>2.0 s (Réf)</span>
+                <span>6.0 s</span>
+              </div>
+            </div>
+
+            <!-- 5. Taux de Défaut Théorique (Prompt 3 & 4) -->
+            <div class="param-control">
+              <div class="param-header">
+                <span>Taux de Défaut Visé</span>
+                <span class="param-value" id="val-defect" style="color: var(--accent-rose);">20 %</span>
+              </div>
+              <input type="range" id="slider-defect" class="param-slider" min="0" max="60" step="1" value="20" style="accent-color: var(--accent-rose);" />
+              <div class="param-bounds">
+                <span>0 % (Parfait)</span>
+                <span>20 % (Réf)</span>
+                <span>60 % (Critique)</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Boîte d'analyse du goulot d'étranglement (Prompt 4) -->
+          <div id="bottleneck-panel-box" class="bottleneck-box nominal">
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <span id="bottleneck-icon">✓</span>
+              <span id="bottleneck-detail">Ligne équilibrée : Aucun goulot d'étranglement détecté.</span>
+            </div>
+            <span id="bottleneck-tip" style="font-size: 0.72rem; opacity: 0.8;">Cadence stable</span>
+          </div>
+        </section>
+
+        <!-- Tableau de Performance & Mini-Dashboard des Capteurs (Prompts 3, 4, 6) -->
+        <section class="panel-card">
+          <div class="panel-header">
+            <div>
+              <h2 class="panel-title">Tableau de Bord SCADA</h2>
+              <span class="panel-subtitle">Performance globale de la ligne & diagnostic capteurs</span>
+            </div>
+            <span style="font-size: 0.75rem; color: var(--text-dim);" id="kpi-elapsed">Temps écoulé : 00:00</span>
+          </div>
+
+          <!-- KPI Cards Grid -->
+          <div class="kpi-grid">
+            <div class="kpi-card">
+              <span class="kpi-label">Production Totale</span>
+              <span class="kpi-value cyan" id="kpi-total">0</span>
+              <span class="kpi-sub">Kits injectés</span>
+            </div>
+
+            <div class="kpi-card">
+              <span class="kpi-label">Drones Assemblés</span>
+              <span class="kpi-value" id="kpi-assembled">0</span>
+              <span class="kpi-sub">Montage achevé</span>
+            </div>
+
+            <div class="kpi-card">
+              <span class="kpi-label">Conformes (Stock)</span>
+              <span class="kpi-value green" id="kpi-pass">0</span>
+              <span class="kpi-sub"><span id="kpi-pass-rate">0.0%</span> conformité</span>
+            </div>
+
+            <div class="kpi-card">
+              <span class="kpi-label">Rejets (Défauts)</span>
+              <span class="kpi-value red" id="kpi-fail">0</span>
+              <span class="kpi-sub"><span id="kpi-fail-rate">0.0%</span> taux réel</span>
+            </div>
+
+            <div class="kpi-card">
+              <span class="kpi-label">Rendement OEE (TRS)</span>
+              <span class="kpi-value green" id="kpi-oee">100.0%</span>
+              <span class="kpi-sub">Efficacité globale ligne</span>
+            </div>
+          </div>
+
+          <!-- Mini Dashboard des Capteurs Industriels (Prompt 6) -->
+          <div>
+            <div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); margin-bottom: 0.4rem;">
+              Diagnostic des Capteurs
+            </div>
+            <div class="sensors-grid">
+              <div class="sensor-chip">
+                <div class="sensor-info">
+                  <span class="sensor-name">Capteur S1 (Kit)</span>
+                  <span class="sensor-desc">Avant assemblage</span>
+                </div>
+                <span class="sensor-badge" id="dash-sensor-s1">Libre</span>
+              </div>
+
+              <div class="sensor-chip">
+                <div class="sensor-info">
+                  <span class="sensor-name">Capteur S2 (QC)</span>
+                  <span class="sensor-desc">Banc vision 3D</span>
+                </div>
+                <span class="sensor-badge" id="dash-sensor-s2">En attente</span>
+              </div>
+
+              <div class="sensor-chip">
+                <div class="sensor-info">
+                  <span class="sensor-name">Compteur Tri S3</span>
+                  <span class="sensor-desc">Post-contrôle</span>
+                </div>
+                <span class="sensor-badge" id="dash-sensor-s3">0 pièce</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Indicateurs de cadence et rendement -->
+          <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted); background: var(--bg-surface-elevated); padding: 0.5rem 0.75rem; border-radius: 6px; border: 1px solid var(--bg-surface-border);">
+            <span>Cadence instantanée : <strong id="kpi-ppm" style="color: #fff;">0.0</strong> ppm</span>
+            <span>Rendement synthétique (OEE) : <strong id="kpi-yield" style="color: var(--accent-emerald);">100%</strong></span>
+            <span>Temps cycle moy. : <strong id="kpi-avg-cycle" style="color: var(--accent-cyan);">--</strong></span>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <!-- Modal Victoire / Défaite (Mode Défi - Prompt 5) -->
+    <div class="modal-overlay" id="challenge-modal">
+      <div class="modal-card" id="challenge-modal-card">
+        <!-- SVG Trophée ou Croix selon résultat -->
+        <svg id="modal-icon-trophy" class="modal-icon-svg" viewBox="0 0 100 100" fill="none">
+          <circle cx="50" cy="50" r="45" fill="rgba(16, 185, 129, 0.2)" stroke="#10b981" stroke-width="3" />
+          <path d="M 32 30 L 68 30 L 62 60 C 60 70 40 70 38 60 Z" fill="#eab308" stroke="#ca8a04" stroke-width="2" />
+          <path d="M 32 35 C 20 35 20 50 34 52" fill="none" stroke="#eab308" stroke-width="3" />
+          <path d="M 68 35 C 80 35 80 50 66 52" fill="none" stroke="#eab308" stroke-width="3" />
+          <rect x="44" y="65" width="12" height="15" fill="#ca8a04" />
+          <rect x="35" y="80" width="30" height="8" rx="2" fill="#713f12" />
+          <polygon points="50,40 53,48 61,48 55,53 57,61 50,56 43,61 45,53 39,48 47,48" fill="#fef08a" />
+        </svg>
+
+        <svg id="modal-icon-defeat" class="modal-icon-svg" viewBox="0 0 100 100" fill="none" style="display: none;">
+          <circle cx="50" cy="50" r="45" fill="rgba(244, 63, 94, 0.2)" stroke="#f43f5e" stroke-width="3" />
+          <circle cx="50" cy="50" r="28" fill="#881337" stroke="#f43f5e" stroke-width="2" />
+          <line x1="38" y1="38" x2="62" y2="62" stroke="#fff" stroke-width="5" stroke-linecap="round" />
+          <line x1="62" y1="38" x2="38" y2="62" stroke="#fff" stroke-width="5" stroke-linecap="round" />
+        </svg>
+
+        <h3 class="modal-title" id="modal-title-text">Défi Réussi !</h3>
+        <p class="modal-desc" id="modal-desc-text">Félicitations ! Vous avez produit 100 drones conformes dans le temps imparti avec une excellente maîtrise de la ligne.</p>
+
+        <div class="modal-stats">
+          <div class="modal-stat-item">
+            <span class="modal-stat-val" id="modal-stat-time">08:42</span>
+            <span class="modal-stat-lbl">Temps Réalisé</span>
+          </div>
+          <div class="modal-stat-item">
+            <span class="modal-stat-val" style="color: var(--accent-emerald);" id="modal-stat-pass">100</span>
+            <span class="modal-stat-lbl">Drones Conformes</span>
+          </div>
+          <div class="modal-stat-item">
+            <span class="modal-stat-val" style="color: var(--accent-rose);" id="modal-stat-rate">18.5%</span>
+            <span class="modal-stat-lbl">Taux Défaut Réel</span>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 0.75rem; width: 100%;">
+          <button id="btn-modal-retry" class="btn btn-primary" style="flex: 1; padding: 0.6rem;">Relever à nouveau le défi</button>
+          <button id="btn-modal-close" class="btn btn-secondary" style="padding: 0.6rem;">Fermer</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Passerelle MQTT & Trames (Localhost uniquement) -->
+    <div class="modal-overlay" id="mqtt-modal">
+      <div class="mqtt-modal-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--bg-surface-border); padding-bottom: 0.75rem;">
+          <div>
+            <h3 style="font-size: 1.15rem; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 0.5rem;">
+              <span>Passerelle MQTT (Localhost)</span>
+              <span id="mqtt-modal-status-badge" class="mqtt-badge-indicator disconnected" style="font-size: 0.7rem;">DÉCONNECTÉ</span>
+            </h3>
+            <p style="font-size: 0.78rem; color: var(--text-dim); margin-top: 0.2rem;">
+              Diffusion temps réel des données et commandes via le broker MQTT local
+            </p>
+          </div>
+          <button id="btn-close-mqtt-modal" class="btn btn-secondary" style="padding: 0.35rem 0.7rem; font-size: 0.8rem;">✕ Fermer</button>
+        </div>
+
+        <!-- Navigation Onglets -->
+        <div class="mqtt-tabs">
+          <button class="mqtt-tab-btn active" data-tab="mqtt-settings">Configuration Broker</button>
+          <button class="mqtt-tab-btn" data-tab="mqtt-inspector">Moniteur de Trames (Tx/Rx)</button>
+        </div>
+
+        <!-- Onglet 1 : Paramètres Broker -->
+        <div id="tab-mqtt-settings" class="mqtt-tab-content">
+          <div class="mqtt-form-grid">
+            <div class="mqtt-input-group" style="grid-column: 1 / -1;">
+              <label class="mqtt-input-label">Serveur Broker Local</label>
+              <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                <button type="button" class="btn btn-primary preset-broker" data-url="ws://localhost:9001" style="font-size: 0.75rem;">Localhost (ws://localhost:9001)</button>
+                <button type="button" class="btn btn-secondary preset-broker" data-url="ws://127.0.0.1:9001" style="font-size: 0.75rem;">127.0.0.1 (ws://127.0.0.1:9001)</button>
+              </div>
+            </div>
+
+            <div class="mqtt-input-group" style="grid-column: 1 / -1;">
+              <label class="mqtt-input-label" for="mqtt-broker-url">URL du Broker WebSocket (Localhost)</label>
+              <input type="text" id="mqtt-broker-url" class="mqtt-input" value="ws://localhost:9001" placeholder="ws://localhost:9001" />
+              <span style="font-size: 0.7rem; color: var(--text-dim);">Liaison 100% locale : La simulation web se connecte à <code>ws://localhost:9001</code> et Node-RED se connecte à <code>localhost:1883</code>.</span>
+            </div>
+
+            <div class="mqtt-input-group">
+              <label class="mqtt-input-label" for="mqtt-topic-prefix">Préfixe Topic de Base</label>
+              <input type="text" id="mqtt-topic-prefix" class="mqtt-input" value="factory/dronesim" placeholder="factory/dronesim" />
+            </div>
+
+            <div class="mqtt-input-group">
+              <label class="mqtt-input-label" for="mqtt-client-id">Client ID (Unique)</label>
+              <input type="text" id="mqtt-client-id" class="mqtt-input" value="dronesim_web_client" />
+            </div>
+
+            <div class="mqtt-input-group">
+              <label class="mqtt-input-label" for="mqtt-publish-rate">Période d'Émission</label>
+              <select id="mqtt-publish-rate" class="mqtt-input">
+                <option value="500">500 ms (Haute fréquence)</option>
+                <option value="1000" selected>1.0 seconde (Recommandé)</option>
+                <option value="2000">2.0 secondes (Bande passante éco)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Actions de Connexion -->
+          <div style="display: flex; gap: 0.75rem; margin-top: 1rem; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+            <div style="display: flex; gap: 0.75rem;">
+              <button id="btn-mqtt-connect" class="btn btn-primary" style="padding: 0.55rem 1.25rem;">
+                <span id="btn-mqtt-connect-label">Connecter à MQTT</span>
+              </button>
+              <button id="btn-mqtt-disconnect" class="btn btn-danger" style="display: none; padding: 0.55rem 1.25rem;">
+                Déconnecter
+              </button>
+            </div>
+
+            <div style="font-size: 0.78rem; font-family: var(--font-mono); color: var(--text-muted); display: flex; gap: 1rem;">
+              <span>Émis (Tx): <strong id="mqtt-tx-count" style="color: var(--accent-cyan);">0</strong> trames</span>
+              <span>Reçu (Rx): <strong id="mqtt-rx-count" style="color: var(--accent-emerald);">0</strong> cmd</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Onglet 2 : Moniteur de Trames en Direct -->
+        <div id="tab-mqtt-inspector" class="mqtt-tab-content" style="display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+            <span style="font-size: 0.75rem; color: var(--text-dim); font-weight: 600;">FLUX DES MESSAGES EN TEMPS RÉEL (TOPICS PUBLIÉS & COMMANDES REÇUES)</span>
+            <button id="btn-clear-mqtt-log" class="btn btn-secondary" style="font-size: 0.7rem; padding: 0.2rem 0.5rem;">Effacer le journal</button>
+          </div>
+          <div id="mqtt-packet-stream" class="mqtt-packet-box">
+            <div class="mqtt-packet-line" style="color: var(--text-dim);">
+              <span>En attente de connexion pour tracer les échanges MQTT...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Guide Node-RED (3 étapes simples) -->
+    <div class="modal-overlay" id="guide-modal">
+      <div class="mqtt-modal-card" style="max-width: 600px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--bg-surface-border); padding-bottom: 0.75rem;">
+          <div>
+            <h3 style="font-size: 1.15rem; font-weight: 700; color: #fff;">
+              Guide Node-RED
+            </h3>
+            <p style="font-size: 0.78rem; color: var(--text-dim); margin-top: 0.2rem;">
+              Configuration en 3 étapes
+            </p>
+          </div>
+          <button id="btn-close-guide-modal" class="btn btn-secondary" style="padding: 0.35rem 0.7rem; font-size: 0.8rem;">✕ Fermer</button>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 0.85rem; margin-top: 0.75rem;">
+          <!-- Étape 1 -->
+          <div class="guide-step">
+            <div class="guide-step-title">
+              <span style="background: var(--accent-cyan); color: #000; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 700;">1</span>
+              <span>Installer Node-RED</span>
+            </div>
+            <div class="guide-code-snippet">npm install -g --unsafe-perm node-red
+node-red</div>
+          </div>
+
+          <!-- Étape 2 -->
+          <div class="guide-step">
+            <div class="guide-step-title">
+              <span style="background: var(--accent-cyan); color: #000; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 700;">2</span>
+              <span>Copier le Flow JSON</span>
+            </div>
+            <div style="margin-top: 0.25rem;">
+              <button id="btn-guide-copy-flow" class="btn btn-accent" style="padding: 0.5rem 1rem;">
+                📋 Copier le Flow JSON Node-RED
+              </button>
+            </div>
+          </div>
+
+          <!-- Étape 3 -->
+          <div class="guide-step">
+            <div class="guide-step-title">
+              <span style="background: var(--accent-cyan); color: #000; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 700;">3</span>
+              <span>Ouvrir l'adresse Dashboard</span>
+            </div>
+            <div class="guide-code-snippet">http://localhost:1880/ui</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Script Pure Vanilla JavaScript (Strictly No Frameworks) -->
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
